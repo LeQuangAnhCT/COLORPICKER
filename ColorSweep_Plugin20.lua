@@ -509,14 +509,69 @@ local function setup()
   finish_setup(plugin_slot, macro_start, preset_start, count)
 end
 
+local function create_sweep_controls()
+  local raw=input('FIRST SWEEP CONTROL MACRO ID','500')
+  if raw=='' then say('Cancelled.');return end
+  local first=tonumber(raw)
+  if not first or first<1 or first~=math.floor(first) then say('Enter a positive whole Macro ID. Nothing changed.');return end
+  local last=first+#TIMES*2+#DIRECTIONS-1
+  if last>9999 then say('Macro range exceeds 9999. Nothing changed.');return end
+  if (first<=139 and last>=130) or (first<=103 and last>=92) then
+    say('Macro range overlaps Plugin 20 or ALL color macros. Nothing changed.');return
+  end
+  for target=1,target_count() do
+    local executor=tonumber(getvar('target-'..target..'-executor',''))
+    local cues=tonumber(getvar('target-'..target..'-cues','12')) or 12
+    if executor and executor>=1 and cues>=1 then
+      local color_first=14+(executor-1)*13
+      local color_last=color_first+cues-1
+      if first<=color_last and last>=color_first then
+        say('Macro range overlaps configured color macros '..color_first..'-'..color_last..'. Nothing changed.');return
+      end
+    end
+  end
+  local occupied,snapshot={},{}
+  for id=first,last do
+    snapshot[id]=gma.show.getobj.handle('Macro 1.'..id) or false
+    if snapshot[id] then occupied[#occupied+1]=tostring(id) end
+  end
+  local warning=#occupied>0 and ('\nREPLACE ENTIRE EXISTING MACROS: '..table.concat(occupied,', ')) or '\nAll target macros are empty.'
+  if not confirm('CREATE SWEEP CONTROLS','Create Macro 1.'..first..' through 1.'..last..' for Plugin 20?'..warning..'\nBackup the show first.') then
+    say('Cancelled. Nothing changed.');return
+  end
+  for id=first,last do
+    local current=gma.show.getobj.handle('Macro 1.'..id) or false
+    if (not not current)~=(not not snapshot[id]) then say('Macro Pool changed. Nothing created.');return end
+    if current and gma.show.getobj.compare and not gma.show.getobj.compare(current,snapshot[id]) then
+      say('Macro Pool changed. Nothing created.');return
+    end
+  end
+  local id=first
+  for _,value in ipairs(TIMES) do
+    macro_store(id,'Delay '..time_text(value)..'s',{'SetVar $CSWEEP_PACK_KIND = 1','SetVar $CSWEEP_PACK_VALUE = '..value,'Plugin '..DEFAULT_PLUGIN_SLOT})
+    id=id+1
+  end
+  for index,value in ipairs(TIMES) do
+    macro_store(id,'Sweep '..time_text(value)..'s',{'SetVar $CSWEEP_PACK_KIND = 2','SetVar $CSWEEP_PACK_VALUE = '..index,'Plugin '..DEFAULT_PLUGIN_SLOT})
+    id=id+1
+  end
+  for index,direction in ipairs(DIRECTIONS) do
+    macro_store(id,'Direction '..direction.label,{'SetVar $CSWEEP_PACK_KIND = 3','SetVar $CSWEEP_PACK_VALUE = '..index,'Plugin '..DEFAULT_PLUGIN_SLOT})
+    id=id+1
+  end
+  gma.show.setvar('CSWEEP_CONTROL_FIRST',tostring(first))
+  gma.show.setvar('CSWEEP_CONTROL_LAST',tostring(last))
+  say('Created Macro 1.'..first..' thru 1.'..last..'. Run Setup before using controls.')
+end
+
 local MENU_NAME = 'CSWEEP CONTROL MENU'
+local MENU_VERSION = '2'
 local MENU_OPTIONS = {
-  '01 SETUP GROUPS AND SWEEP',
-  '02 APPLY CURRENT SWEEP',
-  '03 PATCH COLOR MACROS',
-  '04 PATCH ALL COLOR MACROS',
-  '05 REBUILD AFTER FIXTURE CHANGE',
-  '06 ENABLE BEAM DIMMER DIP',
+  {label='01 CREATE DELAY AND SWEEP MACROS', action=7},
+  {label='02 SETUP GROUPS AND SWEEP', action=1},
+  {label='03 PATCH ALL COLOR MACROS', action=4},
+  {label='04 REBUILD AFTER FIXTURE CHANGE', action=5},
+  {label='05 ENABLE BEAM DIMMER DIP', action=6},
 }
 
 local function exists(path)
@@ -532,35 +587,39 @@ local function menu_owned(address)
 end
 
 local function open_menu()
-  local address = getvar('menu-executor', '')
-  if address ~= '' then
-    if not address:match('^1%.%d+$') or not menu_owned(address) then
-      say('Saved menu Executor '..address..' is missing or no longer belongs to this plugin. Nothing changed.')
+  local previous = getvar('menu-executor', '')
+  if previous ~= '' then
+    if not previous:match('^1%.%d+$') or not menu_owned(previous) then
+      say('Saved menu Executor '..previous..' is missing or no longer belongs to this plugin. Nothing changed.')
       return false
     end
-    gma.cmd('Goto Executor '..address)
-    return true
+    if getvar('menu-version','')==MENU_VERSION then
+      gma.cmd('Goto Executor '..previous)
+      return true
+    end
   end
+  local address = ''
   if not exists('Page 1') then say('Page 1 missing. No menu created.');return false end
   for number=201,240 do
     local candidate='1.'..number
     if not exists('Executor '..candidate) then address=candidate;break end
   end
   if address == '' then say('No free menu Executor on Page 1.201-240. Nothing created.');return false end
-  if not confirm('CREATE SWEEP MENU','Create the Color Sweep menu at empty Executor '..address..' on Page 1?\nThe Programmer will be cleared and BlindEdit will be switched off after installation. No existing Executor will be overwritten. Backup the show first.') then
+  local old_notice=previous~='' and ('\nThe previous menu at '..previous..' is retained and will not be deleted.') or ''
+  if not confirm('CREATE SWEEP MENU','Create the Color Sweep menu at empty Executor '..address..' on Page 1?'..old_notice..'\nThe Programmer will be cleared and BlindEdit will be switched off after installation. No existing Executor will be overwritten. Backup the show first.') then
     say('Menu creation cancelled.');return false
   end
   if exists('Executor '..address) then say('Menu Executor became occupied. Nothing created.');return false end
   gma.cmd('BlindEdit On')
   gma.cmd('ClearAll')
   local ok, err = pcall(function()
-    for cue, label in ipairs(MENU_OPTIONS) do
+    for cue, item in ipairs(MENU_OPTIONS) do
       gma.cmd('Store Cue '..cue..' Executor '..address..' /nc')
       if not exists('Cue '..cue..' Executor '..address) then
         error('Could not create menu cue '..cue..'.')
       end
-      gma.cmd('Label Cue '..cue..' Executor '..address..' "'..label..'"')
-      gma.cmd('Assign Cue '..cue..' Executor '..address..' /cmd="SetVar $CSWEEP_MENU_ACTION = '..cue..' ; Plugin '..DEFAULT_PLUGIN_SLOT..'"')
+      gma.cmd('Label Cue '..cue..' Executor '..address..' "'..item.label..'"')
+      gma.cmd('Assign Cue '..cue..' Executor '..address..' /cmd="SetVar $CSWEEP_MENU_ACTION = '..item.action..' ; Plugin '..DEFAULT_PLUGIN_SLOT..'"')
     end
     gma.cmd('Label Executor '..address..' "'..MENU_NAME..'"')
     gma.cmd('Assign Goto At ExecButton1 '..address)
@@ -573,16 +632,15 @@ local function open_menu()
     return false
   end
   setvar('menu-executor', address)
+  setvar('menu-version', MENU_VERSION)
   say('Menu created at Executor '..address..'.')
   gma.cmd('Goto Executor '..address)
   return true
 end
 
 local function run_menu_action(action)
-  if action == 1 then setup()
-  elseif action == 2 then apply_current()
-  elseif action == 3 then
-    if confirm('PATCH COLOR MACROS','Replace line 1 in configured color Macros? Backup the show first.') then patch_color_macros() end
+  if action == 7 then create_sweep_controls()
+  elseif action == 1 then setup()
   elseif action == 4 then
     if confirm('PATCH ALL COLOR MACROS','Replace line 1 in existing Macro 92-103? Backup the show first.') then patch_all_color_macros() end
   elseif action == 5 then
