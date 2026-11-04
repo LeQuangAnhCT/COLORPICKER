@@ -16,10 +16,6 @@ local ALL_COLOR_EXECUTORS = { 1, 2, 3, 4, 5, 6 }
 local DEFAULT_PLUGIN_SLOT = 20
 local DEFAULT_MACRO_START = 130
 local DEFAULT_PRESET_START = 1
-local DIMMER_DIP_PRESET_START = 900
-local DIMMER_DIP_DOWN_TIME = 0.15
-local DIMMER_DIP_WHEEL_WAIT = 0.35
-local DIMMER_DIP_UP_TIME = 0.20
 
 local function say(message)
   gma.feedback("[ColorSweep] " .. tostring(message))
@@ -112,89 +108,21 @@ local function target_count()
   return tonumber(getvar("target-count", "0")) or 0
 end
 
-local function find_free_dimmer_memory_preset()
-  for preset = DIMMER_DIP_PRESET_START, DIMMER_DIP_PRESET_START + 99 do
-    local handle = gma.show.getobj.handle("Preset 1." .. preset)
-    if not handle then
-      return preset
-    end
-  end
-  return nil
-end
-
-local function run_dimmer_dip(target_index, cue)
+local function run_color_cue(target_index, cue)
   local count = target_count()
   if target_index < 1 or target_index > count then
-    say("Target Dimmer Dip khong hop le.")
+    say("Target mau khong hop le.")
     return
   end
-
-  local group = getvar("target-" .. target_index .. "-group", "")
-  local page = getvar("target-" .. target_index .. "-page", "99")
-  local executor = getvar("target-" .. target_index .. "-executor", "")
+  local page = tonumber(getvar("target-" .. target_index .. "-page", "99"))
+  local executor = tonumber(getvar("target-" .. target_index .. "-executor", ""))
   local cues = tonumber(getvar("target-" .. target_index .. "-cues", "12")) or 12
-  if group == "" or executor == "" or cue < 1 or cue > cues then
-    say("Chua co cau hinh Group, Executor hoac Cue cho Dimmer Dip.")
+  if not page or page<1 or page~=math.floor(page) or not executor or executor<1
+    or executor~=math.floor(executor) or cue<1 or cue>cues then
+    say("Chua co cau hinh Executor hoac Cue mau hop le.")
     return
   end
-
-  if getvar("dimmer-dip-busy", "NO") == "YES" then
-    say("Dimmer Dip dang chay. Bo qua lenh bam trung.")
-    return
-  end
-  setvar("dimmer-dip-busy", "YES")
-
-  local memory_preset = find_free_dimmer_memory_preset()
-  if not memory_preset then
-    setvar("dimmer-dip-busy", "NO")
-    say("Khong con Preset Dimmer trong tu 1.900 Thru 1.999.")
-    return
-  end
-  local time_index = tonumber(getvar("time", "1")) or 1
-  local sweep_time = TIMES[time_index] or 0
-
-  local ok, error_message = pcall(function()
-    gma.cmd("ClearSelection")
-    gma.cmd("Group " .. group)
-
-    -- Capture only the current Dimmer output so the original intensity can be
-    -- restored instead of forcing every fixture to Full.
-    gma.cmd("Store Preset 1." .. memory_preset
-      .. " /o /s /so=Output /use=AllForSelected"
-      .. " /presetfilter=true /v=true /vt=false /ef=false /nc")
-    gma.cmd('Label Preset 1.' .. memory_preset .. ' "CSweep Dimmer Memory"')
-
-    gma.cmd("At 0 Fade " .. time_text(DIMMER_DIP_DOWN_TIME))
-    gma.sleep(DIMMER_DIP_DOWN_TIME)
-
-    gma.cmd("Goto Cue " .. cue .. " Executor " .. page .. "." .. executor
-      .. " /cue_mode=Assert")
-    gma.sleep(base_delay() + sweep_time + DIMMER_DIP_WHEEL_WAIT)
-
-    gma.cmd("ClearSelection")
-    gma.cmd("Group " .. group)
-    gma.cmd("At Preset 1." .. memory_preset
-      .. " Fade " .. time_text(DIMMER_DIP_UP_TIME))
-    gma.sleep(DIMMER_DIP_UP_TIME)
-
-    -- Remove only Dimmer values created by this transition. Other programmer
-    -- attributes are not cleared.
-    gma.cmd("Off PresetType 1")
-    gma.cmd("ClearSelection")
-    gma.cmd("Delete Preset 1." .. memory_preset .. " /nc")
-  end)
-
-  setvar("dimmer-dip-busy", "NO")
-  if not ok then
-    gma.cmd("ClearSelection")
-    gma.cmd("Group " .. group)
-    gma.cmd("Off PresetType 1")
-    gma.cmd("ClearSelection")
-    say("Loi Dimmer Dip: " .. tostring(error_message))
-    return
-  end
-
-  say("Dimmer Dip xong: Target " .. target_index .. ", Cue " .. cue .. ".")
+  gma.cmd('Goto Cue '..cue..' Executor '..page..'.'..executor..' /cue_mode=Assert')
 end
 
 local function create_timing_presets(preset_start, count)
@@ -364,7 +292,7 @@ local function patch_all_color_macros()
   say("Moi Macro ALL se goi cung Cue tren Executor 99.1 Thru 99.6.")
 end
 
-local function patch_beam_dimmer_dip()
+local function patch_beam_color_macros()
   local target_index = 1
   local count = target_count()
   if count < target_index then
@@ -372,35 +300,47 @@ local function patch_beam_dimmer_dip()
     return
   end
 
+  local page = tonumber(getvar("target-" .. target_index .. "-page", "99"))
   local executor = tonumber(getvar("target-" .. target_index .. "-executor", ""))
   local cues = tonumber(getvar("target-" .. target_index .. "-cues", "12")) or 12
-  local plugin_slot = tonumber(getvar("plugin-slot", tostring(DEFAULT_PLUGIN_SLOT)))
-    or DEFAULT_PLUGIN_SLOT
-  if not executor then
-    say("Target 1 chua co Executor mau.")
+  if not page or page<1 or page~=math.floor(page) or not executor or executor<1
+    or executor~=math.floor(executor) or cues<1 or cues~=math.floor(cues) then
+    say("Target 1 chua co Executor hoac Cue mau hop le.")
     return
   end
-
-  setvar("dimmer-dip-busy", "NO")
   local first_macro = 14 + (executor - 1) * 13
-  local changed = 0
+  local last_macro = first_macro + cues - 1
+  local pack_first = tonumber(trim(gma.show.getvar('CSWEEP_CONTROL_FIRST')))
+  local pack_last = tonumber(trim(gma.show.getvar('CSWEEP_CONTROL_LAST')))
+  if (first_macro<=139 and last_macro>=130) or (first_macro<=103 and last_macro>=92)
+    or (pack_first and pack_last and first_macro<=pack_last and last_macro>=pack_first) then
+    say('Beam color Macro range overlaps Sweep or ALL controls. Nothing changed.');return
+  end
+  local selected={}
   for cue = 1, cues do
     local macro_number = first_macro + cue - 1
     local macro_handle = gma.show.getobj.handle("Macro 1." .. macro_number)
     if macro_handle then
-      local command = "SetVar $CSWEEP_COLOR_TARGET = " .. target_index
-        .. " ; SetVar $CSWEEP_COLOR_CUE = " .. cue
-        .. " ; Plugin " .. plugin_slot
-      gma.cmd("Store Macro 1." .. macro_number .. ".1 /o /nc")
-      gma.cmd('Assign Macro 1.' .. macro_number .. '.1 /cmd="' .. command .. '"')
-      changed = changed + 1
+      selected[#selected+1]={number=macro_number,cue=cue,handle=macro_handle}
     else
       say("Bo qua Macro Beam " .. macro_number .. ": khong ton tai.")
     end
   end
-
-  say("Da gan Dimmer Dip cho " .. changed .. " Macro Beam.")
-  say("Preset Dimmer tam se tu tim o trong tu 1.900 Thru 1.999.")
+  if #selected==0 then say('Khong tim thay Macro mau Beam.');return end
+  local ids={};for _,item in ipairs(selected) do ids[#ids+1]=tostring(item.number) end
+  if not confirm('BEAM COLOR DIRECT','Replace only line 1 of Macro '..table.concat(ids,', ')..' with Goto cues on Executor '..page..'.'..executor..'?\nOther macro lines are kept. No Dimmer Dip. Backup the show first.') then return end
+  for _,item in ipairs(selected) do
+    local current=gma.show.getobj.handle('Macro 1.'..item.number)
+    if not current or (gma.show.getobj.compare and not gma.show.getobj.compare(current,item.handle)) then
+      say('Macro Pool changed after confirmation. Nothing changed.');return
+    end
+  end
+  for _,item in ipairs(selected) do
+    local line='Macro 1.'..item.number..'.1'
+    gma.cmd('Store '..line..' /o /nc')
+    gma.cmd('Assign '..line..' /cmd="Goto Cue '..item.cue..' Executor '..page..'.'..executor..' /cue_mode=Assert"')
+  end
+  say('Da sua '..#selected..' Macro mau Beam: goi Cue truc tiep, khong ha Dimmer.')
 end
 
 local function rebuild_after_fixture_change()
@@ -565,13 +505,13 @@ local function create_sweep_controls()
 end
 
 local MENU_NAME = 'CSWEEP CONTROL MENU'
-local MENU_VERSION = '2'
+local MENU_VERSION = '3'
 local MENU_OPTIONS = {
   {label='01 CREATE DELAY AND SWEEP MACROS', action=7},
   {label='02 SETUP GROUPS AND SWEEP', action=1},
   {label='03 PATCH ALL COLOR MACROS', action=4},
   {label='04 REBUILD AFTER FIXTURE CHANGE', action=5},
-  {label='05 ENABLE BEAM DIMMER DIP', action=6},
+  {label='05 BEAM COLORS DIRECT - NO DIMMER DIP', action=6},
 }
 
 local function exists(path)
@@ -646,7 +586,7 @@ local function run_menu_action(action)
   elseif action == 5 then
     if confirm('REBUILD SWEEP','Overwrite the configured 24 All Presets, clear the Programmer and update all configured color Cues? Backup the show first.') then rebuild_after_fixture_change() end
   elseif action == 6 then
-    if confirm('PATCH BEAM MACROS','Replace line 1 in the Beam color Macros? Dimmer Dip temporarily controls Dimmer and creates a temporary Preset. Test offline and back up first.') then patch_beam_dimmer_dip() end
+    patch_beam_color_macros()
   else say('Lua chon khong hop le.') end
 end
 
@@ -678,8 +618,8 @@ local function main()
   if color_target or color_cue then
     gma.show.setvar('CSWEEP_COLOR_TARGET','')
     gma.show.setvar('CSWEEP_COLOR_CUE','')
-    if not color_target or not color_cue then say('Thieu Target hoac Cue cho Dimmer Dip.');return end
-    run_dimmer_dip(math.floor(color_target),math.floor(color_cue))
+    if not color_target or not color_cue then say('Thieu Target hoac Cue mau.');return end
+    run_color_cue(math.floor(color_target),math.floor(color_cue))
     return
   end
   local run = trim(gma.show.getvar("CSWEEP_RUN"))
@@ -690,10 +630,10 @@ local function main()
     gma.show.setvar("CSWEEP_TARGET", "")
     gma.show.setvar("CSWEEP_CUE", "")
     if not target_index or not cue then
-      say("Thieu Target hoac Cue cho Dimmer Dip.")
+      say("Thieu Target hoac Cue mau.")
       return
     end
-    run_dimmer_dip(math.floor(target_index), math.floor(cue))
+    run_color_cue(math.floor(target_index), math.floor(cue))
     return
   end
 

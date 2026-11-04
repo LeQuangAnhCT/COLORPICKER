@@ -107,8 +107,17 @@ assert(#commands==0,'setup must reject color macros overlapping Plugin 20 contro
 assert(variables['csweep-target-1-executor']=='1','rejected setup must preserve earlier configuration')
 commands={};handles['Macro 1.14']='color';variables.CSWEEP_MENU_ACTION='6'
 sweep()
-assert(contains('Assign Macro 1.14.1 /cmd="SetVar $CSWEEP_COLOR_TARGET = 1 ; SetVar $CSWEEP_COLOR_CUE = 1 ; Plugin 20"'),
-  'Dimmer Dip macro must use numeric global variables')
+assert(contains('Assign Macro 1.14.1 /cmd="Goto Cue 1 Executor 99.1 /cue_mode=Assert"'),
+  'Beam white macro must call the color cue directly')
+assert(not contains('Store Macro 1.14.2 /o /nc'),'appearance lines must remain unchanged')
+commands={};variables.CSWEEP_RUN='COLOR';variables.CSWEEP_TARGET='1';variables.CSWEEP_CUE='1'
+sweep()
+assert(#commands==1 and commands[1]=='Goto Cue 1 Executor 99.1 /cue_mode=Assert',
+  'legacy Beam macros must call the color cue without changing Dimmer')
+commands={};variables.CSWEEP_COLOR_TARGET='1';variables.CSWEEP_COLOR_CUE='1'
+sweep()
+assert(#commands==1 and commands[1]=='Goto Cue 1 Executor 99.1 /cue_mode=Assert',
+  'numeric Beam macros must call the color cue without changing Dimmer')
 commands={};handles={['Page 1']='page',['Executor 1.201']='occupied'};labels={['Executor 1.201']='OTHER'}
 approved=false;sweep()
 assert(#commands==0,'declining menu creation must not change the show')

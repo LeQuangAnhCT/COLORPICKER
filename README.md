@@ -24,7 +24,9 @@ Plugin Lua cho grandMA2 3.9.x tai Plugin Pool 20, co menu tao Macro dieu khien, 
 
 - Setup co the **thay the Macro 130-139 va ghi de Preset 0.1-0.24** sau khi ban xac nhan. Dung xac nhan neu co du lieu can giu.
 - Moi lan ap dung Sweep se sua Cue mau da khai bao tren Page 99, dat Cue Fade ve 0 va xoa Programmer. Khong nen chay tren show dang bieu dien; hay sao luu show va kiem tra tren ban sao.
-- Cac chuc nang sua Macro mau, Macro ALL, lam moi Preset va Dimmer Dip deu yeu cau xac nhan. Chuc nang Dimmer Dip can thu rieng voi fixture profile va output thuc te truoc khi su dung.
+- Muc `05 BEAM COLORS DIRECT - NO DIMMER DIP` sua duy nhat dong 1 cua cac Macro mau thuoc Target 1 thanh `Goto` truc tiep. Vi du Target 1 la Executor `99.1` thi Macro 14 goi Cue 1. Cac dong anh/appearance phia sau duoc giu nguyen. Co hop thoai xac nhan truoc khi sua.
+- Dimmer Dip da duoc bo. Cac Macro cu con goi Plugin theo kieu Dimmer Dip se duoc xu ly bang cach goi Cue mau truc tiep neu chay duoc lenh cu.
+- Cac chuc nang sua Macro mau ALL, lam moi Preset va sua Macro mau Beam deu yeu cau xac nhan.
 - Plugin khong tu xoa Macro Pack cu, Preset cu, hay thay the cac nut Layout cu. Cac nut cu co the van tham chieu bien khac va khong dieu khien ban plugin moi.
 - Khi loi trong luc ghi, mot so doi tuong da tao co the van con. Khong co rollback tu dong. Kiem tra Command Line Feedback va ban sao luu.
 
